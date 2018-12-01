@@ -8,7 +8,8 @@ import Data.Text.IO (readFile)
 import Data.Text.Read (signed, decimal)
 import Data.Traversable (sequenceA)
 
+main :: IO ()
 main = do
-    input <- readFile "day1-1.input"
+    input <- readFile "day1.input"
     let result = sum . fmap fst <$> sequenceA (signed decimal <$> lines input)
     print result
