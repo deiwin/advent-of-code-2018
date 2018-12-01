@@ -18,10 +18,9 @@ main = do
     print $ findRepeatingFrequency (cycle changes) Set.empty 0
 
 findRepeatingFrequency :: [Integer] -> Set Integer -> Integer -> Integer
-findRepeatingFrequency (change : rest) seenFrequencies currentFrequency =
-    if Set.member newFrequency seenFrequencies
-        then newFrequency
-        else findRepeatingFrequency rest newSeenFrequencies newFrequency
+findRepeatingFrequency (change : rest) seenFrequencies currentFrequency
+  | Set.member newFrequency seenFrequencies = newFrequency
+  | otherwise = findRepeatingFrequency rest newSeenFrequencies newFrequency
   where
     newFrequency       = currentFrequency + change
     newSeenFrequencies = Set.insert newFrequency seenFrequencies
