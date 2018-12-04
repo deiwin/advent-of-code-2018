@@ -29,6 +29,9 @@ main = do
                 $ Map.filterWithKey (\k _ -> fst k == mostSleptGuardID) sleepCounts
     print $ "1: " <> show (mostSleptGuardID * mostSleptMinute)
 
+    let (mostFequentID, mostFequentMinute) = fst $ maximumBy (comparing snd) $ Map.toList sleepCounts
+    print $ "2: " <> show (mostFequentID * mostFequentMinute)
+
 fillIDs :: (Maybe ID, Maybe Minute, SleepCountMap)
         -> (Maybe ID, Minute)
         -> (Maybe ID, Maybe Minute, SleepCountMap)
