@@ -2,13 +2,20 @@
 -- stack --resolver lts-12.20 --install-ghc runghc
 {-# LANGUAGE OverloadedStrings #-}
 
-import Data.List (foldr)
+import Data.List (foldr, nub)
 import Data.Char (toLower, isLower)
 
 main :: IO ()
 main = do
     input <- head . lines <$> readFile "day5.input"
     print $ length $ untilFixed reduce input
+
+    let allTypes = nub $ toLower <$> input
+    print $ minimum $ length . untilFixed reduce . withoutType input <$> allTypes
+
+withoutType :: String -> Char -> String
+withoutType s c = filter (not . same c) s
+    where same a b = toLower a == toLower b
 
 untilFixed :: Eq a => (a -> a) -> a -> a
 untilFixed f x
