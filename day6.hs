@@ -3,93 +3,58 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Data.List (all, elem, any, nub, sort)
+import Data.List (nub, sortOn)
 import Linear.V2 (V2(..))
-import Data.Array.IArray (Array, accumArray, bounds, (//), (!))
 import Data.Ix (range, inRange)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Control.Monad (guard)
+import Control.Applicative (empty)
 
 type Coord = V2 Int
 type Bounds = (Coord, Coord)
-type ID = Int
-data Cell = Filled ID | Empty | Crowded deriving (Show, Eq)
-isFilled (Filled _) = True
-isFilled _          = False
-type Matrix = Array Coord Cell
-
-type Counts = Map ID Int
+type Counts = Map Coord Int
 
 main :: IO ()
 main = do
     input <- lines <$> readFile "day6.input"
     let coords = toV2 . fmap read . words . filter (/= ',') <$> input
-    let filledM = untilFixed tick $ fillInitial coords
-    let sideIDs = getSideIDs filledM
-    print $ maximum $ Map.elems $ Map.filterWithKey (notIn sideIDs) $ getCounts filledM
+    let bounds = getBounds coords
+    let sideIDs = getSideIDs bounds coords
+    print $ maximum $ Map.elems $ Map.filterWithKey (notIn sideIDs) $ dangerousCells bounds coords
   where
     notIn ids id _ = id `notElem` ids
 
-getCounts :: Matrix -> Counts
-getCounts m = Map.fromListWith (+) $ do
-    i <- range $ bounds m
-    let cell = m ! i
-    guard $ isFilled cell
-    let Filled id = cell
-    return (id, 1)
+dangerousCells :: Bounds -> [Coord] -> Counts
+dangerousCells bounds coords = Map.fromListWith (+) $ do
+    coord <- range bounds
+    case closest coords coord of
+      Nothing -> empty
+      Just c -> return (c, 1)
 
-getSideIDs :: Matrix -> [ID]
-getSideIDs m = sort $ nub $ do
-    i <- range b
-    guard $ isSide i && isFilled (m ! i)
-    let Filled id = m ! i
-    return id
+getSideIDs :: Bounds -> [Coord] -> [Coord]
+getSideIDs bounds coords = nub $ do
+    coord <- range bounds
+    guard $ isSide coord
+    case closest coords coord of
+      Nothing -> empty
+      Just c -> return c
   where
-    b = bounds m
-    isSide coord = any (not . inRange b) $ surroundingCoords coord
+    isSide coord = any (not . inRange bounds) $ surroundingCoords coord
 
-tick :: Matrix -> Matrix
-tick m = m // do
-    i <- range $ bounds m
-    guard $ (m ! i) == Empty
-    return (i, newCell m i)
+closest :: [Coord] -> Coord -> Maybe Coord
+closest coords coord =
+    let ((xDist, x):(yDist, y):_) = sortOn fst $ zip (dist coord <$> coords) coords
+     in if xDist == yDist
+           then Nothing
+           else Just x
 
-newCell :: Matrix -> Coord -> Cell
-newCell m coord
-  | cell /= Empty = cell
-  | Crowded `elem` s = Crowded
-  | otherwise = case length filledSurrounding of
-                  0 -> Empty
-                  1 -> head filledSurrounding
-                  _ -> Crowded
-  where
-    cell = m ! coord
-    s = surrounding m coord
-    filledSurrounding = nub $ filter isFilled s
-
-surrounding :: Matrix -> Coord -> [Cell]
-surrounding m coord = do
-    i <- surroundingCoords coord
-    guard $ inRange (bounds m) i
-    return $ m ! i
+dist :: Coord -> Coord -> Int
+dist a b = vsum (a - b)
+    where vsum (V2 x y) = abs x + abs y
 
 surroundingCoords :: Coord -> [Coord]
 surroundingCoords coord = (coord +) . uncurry V2 <$> [(-1, 0), (0, -1), (1, 0), (0, 1)]
-
-untilFixed :: Eq a => (a -> a) -> a -> a
-untilFixed f x
-  | newX == x = x
-  | otherwise = untilFixed f newX
-  where
-    newX = f x
-
-fillInitial :: [Coord] -> Matrix
-fillInitial coords = accumArray (curry snd) Empty bounds assocs
-  where
-    bounds  = getBounds coords
-    assocs  = zip coords idCells
-    idCells = Filled <$> [0..]
 
 getBounds :: [Coord] -> Bounds
 getBounds coords = (V2 (minimum xs) (minimum ys), V2 (maximum xs) (maximum ys))
