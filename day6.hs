@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Data.List (nub, sortOn)
+import Data.List (nub, sortOn, sort, takeWhile)
 import Linear.V2 (V2(..))
 import Data.Ix (range, inRange)
 import Data.Map (Map)
@@ -22,8 +22,15 @@ main = do
     let bounds = getBounds coords
     let sideIDs = getSideIDs bounds coords
     print $ maximum $ Map.elems $ Map.filterWithKey (notIn sideIDs) $ dangerousCells bounds coords
+    print $ safeCellCount bounds coords
   where
     notIn ids id _ = id `notElem` ids
+
+safeCellCount :: Bounds -> [Coord] -> Int
+safeCellCount bounds coords = length $ takeWhile (< 10000) $ sort $ totalDistance coords <$> range bounds
+
+totalDistance :: [Coord] -> Coord -> Int
+totalDistance coords c = sum $ dist c <$> coords
 
 dangerousCells :: Bounds -> [Coord] -> Counts
 dangerousCells bounds coords = Map.fromListWith (+) $ do
