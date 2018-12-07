@@ -43,8 +43,9 @@ parallelAlphaTopSort' g elapsedTime wip acc
     newG = array (bounds g) newAssocs
     newAssocs = zip (fst <$> finishedWork) (repeat []) ++ filter ((`notElem` (fst <$> finishedWork)) . fst) (assocs g)
     (finishedWork, inProgressWork) = partition ((<= 0) . snd) (doWork <$> wip)
-    doWork (v, x) = (v, x - 1)
-    nextTime = elapsedTime + 1
+    doWork (v, x) = (v, x - minWipTime)
+    minWipTime = minimum $ snd <$> wip
+    nextTime = elapsedTime + minWipTime
     nextWip = inProgressWork ++ zip newWork (workTime <$> newWork)
     newAcc = newWork ++ acc
     newWork = take freeWorkerCount allRemovable
