@@ -14,7 +14,9 @@ type Circle = Seq Int
 main :: IO ()
 main = do
     input <- head . lines <$> readFile "day9.input"
-    print $ uncurry solve $ parseLine input
+    let (playerCount, maxMarble) = parseLine input
+    print $ solve playerCount maxMarble
+    print $ solve playerCount (maxMarble * 100)
 
 solve :: Int -> Int -> Int
 solve playerCount = play scores turns circle marble
