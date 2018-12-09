@@ -2,11 +2,14 @@
 -- stack --resolver lts-12.20 --install-ghc runghc
 {-# LANGUAGE OverloadedStrings #-}
 
-import Data.Array.IArray (Array, elems, assocs, bounds, array, accum)
+import Data.Array.IArray (Array, elems, array, accum)
 import Data.Ix (range)
-import Data.List (repeat, zip, cycle, splitAt)
+import Data.List (repeat, zip, cycle)
+import qualified Data.Sequence as Seq
+import Data.Sequence (Seq(..), (><))
 
 type Scores = Array Int Int
+type Circle = Seq Int
 
 main :: IO ()
 main = do
@@ -19,10 +22,10 @@ solve playerCount = play scores turns circle marble
     scores = array bounds $ zip (range bounds) (repeat 0)
     bounds = (0, playerCount - 1)
     turns  = cycle [0 .. (playerCount - 1)]
-    circle = [0]
+    circle = Seq.singleton 0
     marble = 1
 
-play :: Scores -> [Int] -> [Int] -> Int -> Int -> Int
+play :: Scores -> [Int] -> Circle -> Int -> Int -> Int
 play scores (currentPlayer : nextPlayers) circle marble maxMarble
     | marble > maxMarble                = maxScore scores
     | fromIntegral marble `mod` 23 == 0 = play newScores nextPlayers circleWithoutScore nextMarble maxMarble
@@ -33,16 +36,16 @@ play scores (currentPlayer : nextPlayers) circle marble maxMarble
     newScores                           = accum (+) scores [(currentPlayer, marble), (currentPlayer, removedMarble)]
     (removedMarble, circleWithoutScore) = removeMarble (-7) circle
 
-removeMarble :: Int -> [Int] -> (Int, [Int])
+removeMarble :: Int -> Circle -> (Int, Circle)
 removeMarble index circle
   | index < 0 = removeMarble (index + length circle) circle
-  | otherwise = (removedMarble, end ++ start)
+  | otherwise = (removedMarble, end >< start)
   where
-    (start, removedMarble:end) = splitAt index circle
+    (start, removedMarble :<| end) = Seq.splitAt index circle
 
-addNewMarble :: [Int] -> Int -> [Int]
-addNewMarble (x : y : rest) newMarble = newMarble : rest ++ [x, y]
-addNewMarble [x           ] newMarble = [newMarble, x]
+addNewMarble :: Circle -> Int -> Circle
+addNewMarble (x :<| y :<| rest ) newMarble = newMarble :<| rest >< Seq.fromList [x, y]
+addNewMarble (x       :<| Empty) newMarble = Seq.fromList [newMarble, x]
 
 maxScore :: Scores -> Int
 maxScore = maximum . elems
