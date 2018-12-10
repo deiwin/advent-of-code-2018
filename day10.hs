@@ -20,8 +20,12 @@ main :: IO ()
 main = do
     input <- lines <$> readFile "day10.input"
     let Right stars = sequenceA $ parseLine <$> input
-    let results = take 10 $ dropWhile (not . smallRowRange) $ take 100000 $ iterate tick stars
-    traverse_ (prettyPrint . fmap fst) results
+    let results = take 10 $ dropWhile (not . smallRowRange . fst) $ take 100000 $ zip (iterate tick stars) [0 ..]
+    traverse_ p results
+  where
+    p (stars, i) = do
+        print i
+        prettyPrint $ fst <$> stars
 
 smallRowRange :: [(Coord, Velocity)] -> Bool
 smallRowRange stars = isSmall bounds
