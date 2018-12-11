@@ -4,7 +4,7 @@
 import Linear.V2 (V2(..))
 import Data.Ix (range, inRange)
 import Data.Array.IArray (Array, array, bounds, (!))
-import Data.List (maximumBy)
+import Data.List (maximumBy, repeat, foldl1', scanl')
 import Data.Ord (comparing)
 
 type Coord = V2 Int
@@ -16,12 +16,44 @@ main = do
     print $ maxTotalPowerSquare 18
     print $ maxTotalPowerSquare 42
     print $ maxTotalPowerSquare 1133
+    print $ maxTotalAnySizeSquare 1133
+
+maxTotalAnySizeSquare :: Int -> ((Int, Int), Coord)
+maxTotalAnySizeSquare serialNumber = maximumBy' (comparing maxF) possibleResults
+  where
+    maxF ((powerLevel, size), coord) = powerLevel
+    possibleResults = zip (maxSquarePowerLevel grid <$> range bounds) (range bounds)
+    bounds = (V2 1 1, V2 300 300)
+    grid = buildGrid serialNumber bounds
+
+maximumBy' :: (a -> a -> Ordering) -> [a] -> a
+maximumBy' _   [] = error "List.maximumBy: empty list"
+maximumBy' cmp xs = foldl1' maxBy xs
+  where
+    maxBy x y = case cmp x y of
+        GT -> x
+        _  -> y
 
 maxTotalPowerSquare :: Int -> Coord
 maxTotalPowerSquare serialNumber = maximumBy (comparing $ squarePowerLevel grid) $ range bounds
   where
     bounds = (V2 1 1, V2 300 300)
     grid = buildGrid serialNumber bounds
+
+maxSquarePowerLevel :: Grid -> Coord -> (Int, Int)
+maxSquarePowerLevel grid c = maximumBy' (comparing fst) $ drop 1 $ scanl' f (0, 0) [1 .. (maxSquareSize c)]
+  where
+    f (currentSum, _) size = (currentSum + borderSum size, size)
+    borderSum size = sum $ (grid !) <$> borderCoords c size
+
+maxSquareSize :: Coord -> Int
+maxSquareSize (V2 x y) = 301 - max x y
+
+borderCoords :: Coord -> Int -> [Coord]
+borderCoords (V2 x y) size = uncurry V2 <$> coords
+  where
+    coords = zip [x .. (end x)] (repeat (end y)) ++ zip (repeat (end x)) [y .. (end y - 1)]
+    end a = a + size - 1
 
 squarePowerLevel :: Grid -> Coord -> Int
 squarePowerLevel grid c
