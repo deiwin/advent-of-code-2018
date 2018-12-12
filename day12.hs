@@ -1,45 +1,49 @@
 #!/usr/bin/env stack
 -- stack --resolver lts-12.20 --install-ghc runghc
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
 
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
-import Data.List (foldr, iterate, zipWith)
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.List (foldr, zip)
 
-type State = String
-type SpreadingNotes = Map String Char
+type State = Set Int
+type Notes = Map [Bool] Bool
 
 main :: IO ()
 main = do
     (initialState, notes) <- parseInput <$> readFile "day12.input"
-    print $ sumAfter20 notes initialState
+    print $ sumAfterN notes initialState 20
+    print $ sumAfterN notes initialState 5000
+    -- print $ sumAfterN notes initialState 50000000000
 
-sumAfter20 :: SpreadingNotes -> State -> Int
-sumAfter20 notes initialState = sum $ zipWith plantIndex result [startingIndex..]
+sumAfterN :: Notes -> State -> Int -> Int
+sumAfterN notes !state 0 = sum state
+sumAfterN notes !state iterations = sumAfterN notes (tick notes state) (iterations - 1)
+
+tick :: Notes -> State -> State
+tick notes state = Set.foldr f state state
   where
-    plantIndex '.' _ = 0
-    plantIndex '#' i = i
-    result = iterate (tick notes) initialState !! iterations
-    startingIndex = iterations * (-4)
-    iterations = 20
+    f i newState = foldr ($) newState $ insertDelete <$> surroundingIndices i
+    insertDelete i = if willHavePlant notes state i
+                        then Set.insert i
+                        else Set.delete i
 
-tick :: SpreadingNotes -> State -> State
-tick notes state = snd $ foldr (update notes) (buffer, buffer) (buffer ++ state)
-    where buffer = "...."
-
-update :: SpreadingNotes -> Char -> (State, State) -> (State, State)
-update notes a (old, new) = (updatedOld, updatedNew)
+willHavePlant :: Notes -> State -> Int -> Bool
+willHavePlant notes state index = notes Map.! surroundingState
   where
-    updatedOld = a:old
-    updatedNew = a:bn:newChar:restn
-    newChar = notes Map.! [a, b, c, d, e]
-    (b:c:d:e:_) = old
-    (bn:_:restn) = new
+    surroundingState = (`Set.member` state) <$> surroundingIndices index
 
-parseInput :: String -> (State, SpreadingNotes)
+surroundingIndices :: Int -> [Int]
+surroundingIndices i = [(i - 2) .. (i + 2)]
+
+parseInput :: String -> (State, Notes)
 parseInput input = (initialState, notes)
   where
-    initialState = words (head l) !! 2
+    initialState = Set.fromList $ fmap fst $ filter (isPlant . snd) $ zip [0..] (words (head l) !! 2)
     notes = Map.fromList $ toNote . words <$> drop 2 l
-    toNote (s:_:c:_) = (s, head c)
+    toNote (s:_:c:_) = (isPlant <$> s, isPlant (head c))
+    isPlant = (== '#')
     l = lines input
