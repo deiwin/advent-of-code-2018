@@ -16,12 +16,22 @@ main :: IO ()
 main = do
     (initialState, notes) <- parseInput <$> readFile "day12.input"
     print $ sumAfterN notes initialState 20
-    print $ sumAfterN notes initialState 5000
-    -- print $ sumAfterN notes initialState 50000000000
+    print $ sumAfterN notes initialState 50000000000
 
 sumAfterN :: Notes -> State -> Int -> Int
-sumAfterN notes !state 0 = sum state
+sumAfterN notes !state iterations | iterations > stableStart = sum + (iterations - stableStart) * diff
+    where (stableStart, sum, diff) = stableIterationStart notes state 0 0 0
+sumAfterN notes !state 0          = sum state
 sumAfterN notes !state iterations = sumAfterN notes (tick notes state) (iterations - 1)
+
+stableIterationStart :: Notes -> State -> Int -> Int -> Int -> (Int, Int, Int)
+stableIterationStart notes !state 5 stableDiff iterations = (iterations, sum state, stableDiff)
+stableIterationStart notes !state stableIterations stableDiff iterations
+    | newDiff == stableDiff = stableIterationStart notes newState (stableIterations + 1) stableDiff (iterations + 1)
+    | otherwise             = stableIterationStart notes newState 0 newDiff (iterations + 1)
+  where
+    newState = tick notes state
+    newDiff  = sum newState - sum state
 
 tick :: Notes -> State -> State
 tick notes state = Set.foldr f state state
