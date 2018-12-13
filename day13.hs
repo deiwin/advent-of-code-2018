@@ -1,16 +1,21 @@
 #!/usr/bin/env stack
 -- stack --resolver lts-12.20 --install-ghc runghc
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 import Linear.V2 (V2(..))
 import Data.Array.IArray (Array, array, bounds, (!), (//), assocs)
 import Data.List (cycle, foldl', groupBy, sortOn)
 import Text.Show.Functions ()
+import Data.Map (Map)
+import qualified Data.Map.Strict as Map
+import Data.Maybe (catMaybes)
 
-type State = Array Coord Cell
+import Debug.Trace (trace)
+
+type State = Map Coord Cart
+type TrackMap = Array Coord (Maybe Track)
 type Coord = V2 Int
-type Bounds = (Coord, Coord)
-type Cell = Either (Maybe Track) (Track, Cart)
 data Track = Vertical | Horizontal | Corner Bool | Intersection deriving (Show)
 type Cart = (Direction, Turns)
 data Direction = North | East | South | West deriving (Eq, Ord, Enum, Bounded, Show)
@@ -18,76 +23,90 @@ type Turns = [Direction -> Direction]
 
 main :: IO ()
 main = do
-    state <- parseInput <$> readFile "day13.input"
-    print (whileRight tick state)
+    (trackMap, state) <- parseInput <$> readFile "day13.input"
+    print (whileRight (tick trackMap) state)
 
-tick :: State -> Either Coord State
-tick state = foldl' update (Right state) $ do
-    let (V2 x1 y1, V2 x2 y2) = bounds state
-    y <- [y1..y2]
-    x <- [x1..x2]
-    return (V2 x y)
+tick :: TrackMap -> State -> Either Coord State
+tick trackMap state | trace (pretty trackMap state) False = undefined
+tick trackMap state = foldl' (update trackMap) (Right state) coords
+  where
+    coords = sortOn rowsFirst $ Map.keys state
+    rowsFirst (V2 x y) = (y, x)
 
-update :: Either Coord State -> Coord -> Either Coord State
-update (Left  coord) _     = Left coord
-update (Right state) coord = f (state ! coord)
+pretty :: TrackMap -> State -> String
+pretty trackMap state = unlines ls
   where
-    f (Left _) = Right state
-    f (Right (track, cart)) =
-        (state //) . (: [(coord, trackCell track)]) <$> moveUpdate cart (nextCell state cart coord)
-    trackCell track = Left (Just track)
+    ls = fmap toChar <$> groupBy keySameRow (sortOn keyRow $ assocs trackMap)
+    toChar (coord, _) | Just North <- direction = '^'
+                      | Just East <- direction  = '>'
+                      | Just West <- direction  = '<'
+                      | Just South <- direction = 'v'
+        where direction = fst <$> Map.lookup coord state
+    toChar (_, Nothing            ) = ' '
+    toChar (_, Just Vertical      ) = '|'
+    toChar (_, Just Horizontal    ) = '-'
+    toChar (_, Just (Corner False)) = '\\'
+    toChar (_, Just (Corner True) ) = '/'
+    toChar (_, Just Intersection  ) = '+'
+    keyRow (V2 _ y, _) = y
+    keySameRow a b = keyRow a == keyRow b
 
-moveUpdate :: Cart -> (Cell, Coord) -> Either Coord (Coord, Cell)
-moveUpdate cart (Right _                  , coord) = Left coord
-moveUpdate cart (Left  (Just Intersection), coord) = Right (coord, newCell)
+update :: TrackMap -> Either Coord State -> Coord -> Either Coord State
+update _        (Left  coord) _     = Left coord
+update trackMap (Right state) coord = nextState
   where
-    newCell                  = Right (Intersection, newCart)
-    newCart                  = (turn direction, rest)
-    (direction, turn : rest) = cart
-moveUpdate cart (Left (Just (Corner forwardSlash)), coord) = Right (coord, newCell)
-  where
-    newCell      = Right (Corner forwardSlash, newCart)
-    newCart      = (newDirection, turns)
-    newDirection = case (direction, forwardSlash) of
-        (North, True ) -> East
-        (East , True ) -> North
-        (South, True ) -> West
-        (West , True ) -> South
-        (North, False) -> West
-        (East , False) -> South
-        (South, False) -> East
-        (West , False) -> North
-    (direction, turns) = cart
-moveUpdate cart (Left (Just track), coord) = Right (coord, Right (track, cart))
-
-nextCell :: State -> Cart -> Coord -> (Cell, Coord)
-nextCell state cart coord = (state ! nextCoord, nextCoord)
-  where
+    nextState = case Map.lookup nextCoord state of
+        Nothing -> Right (foldr ($) state updates)
+        _       -> Left nextCoord
+    cart      = state Map.! coord
     nextCoord = case cart of
         (North, _) -> coord + V2 0 (-1)
         (South, _) -> coord + V2 0 1
         (West , _) -> coord + V2 (-1) 0
         (East , _) -> coord + V2 1 0
+    apply toState = foldr ($) toState updates
+    updates       = [deleteCurrent, addNew]
+    deleteCurrent = Map.delete coord
+    addNew        = Map.insert nextCoord $ case trackMap ! nextCoord of
+        Just Intersection  -> turnedCart
+        Just (Corner True) -> (, turn : rest) $ case direction of
+            North -> East
+            East  -> North
+            South -> West
+            West  -> South
+        Just (Corner False) -> (, turn : rest) $ case direction of
+            North -> West
+            East  -> South
+            South -> East
+            West  -> North
+        Just _ -> cart
+    turnedCart               = (turn direction, rest)
+    (direction, turn : rest) = cart
 
-parseInput :: String -> State
-parseInput input = array bounds assocs
+parseInput :: String -> (TrackMap, State)
+parseInput input = (trackMap, carts)
   where
-    bounds = (V2 0 0, V2 (length (head ls) - 1) (length ls - 1))
-    ls     = lines input
-    assocs = do
+    trackMap = array bounds (getTrack <$> tracksAndCarts)
+    carts    = Map.fromList (catMaybes $ getCart <$> tracksAndCarts)
+    bounds   = (V2 0 0, V2 (length (head ls) - 1) (length ls - 1))
+    ls       = lines input
+    getTrack (coord, (track, _)) = (coord, track)
+    getCart (coord, (_, Nothing)) = Nothing
+    getCart (coord, (_, Just cart)) = Just (coord, cart)
+    tracksAndCarts = do
         (line, y) <- zip (lines input) [0 ..]
         (char, x) <- zip line [0 ..]
         return (V2 x y, parseChar char)
-    parseChar ' '  = Left Nothing
-    parseChar '-'  = Left (Just Horizontal)
-    parseChar '|'  = Left (Just Vertical)
-    parseChar '\\' = Left (Just (Corner False))
-    parseChar '/'  = Left (Just (Corner True))
-    parseChar '+'  = Left (Just Intersection)
-    parseChar '>'  = Right (Horizontal, (East, turns))
-    parseChar '<'  = Right (Horizontal, (West, turns))
-    parseChar '^'  = Right (Vertical, (North, turns))
-    parseChar 'v'  = Right (Vertical, (South, turns))
+    parseChar ' '  = (Nothing, Nothing)
+    parseChar '-'  = (Just Horizontal, Nothing)
+    parseChar '|'  = (Just Vertical, Nothing)
+    parseChar '\\' = (Just (Corner False), Nothing)
+    parseChar '/'  = (Just (Corner True), Nothing)
+    parseChar '+'  = (Just Intersection, Nothing)
+    parseChar '>'  = (Just Horizontal, Just (East, turns))
+    parseChar '<'  = (Just Horizontal, Just (West, turns))
+    parseChar '^'  = (Just Vertical, Just (North, turns))
+    parseChar 'v'  = (Just Vertical, Just (South, turns))
     turns = cycle [prev, id, next]
 
 prev :: (Eq a, Enum a, Bounded a) => a -> a
