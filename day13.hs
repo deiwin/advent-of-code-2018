@@ -28,8 +28,11 @@ main = do
 
 tick :: TrackMap -> State -> Either Coord State
 tick trackMap state | trace (pretty trackMap state) False = undefined
-tick trackMap state = foldl' (update trackMap) (Right state) coords
+tick trackMap state = if Map.size newState == 1
+                         then Left (head (Map.keys newState))
+                         else Right newState
   where
+    newState = foldl' (update trackMap) state coords
     coords = sortOn rowsFirst $ Map.keys state
     rowsFirst (V2 x y) = (y, x)
 
@@ -51,13 +54,11 @@ pretty trackMap state = unlines ls
     keyRow (V2 _ y, _) = y
     keySameRow a b = keyRow a == keyRow b
 
-update :: TrackMap -> Either Coord State -> Coord -> Either Coord State
-update _        (Left  coord) _     = Left coord
-update trackMap (Right state) coord = nextState
+update :: TrackMap -> State -> Coord -> State
+update trackMap state coord | Nothing <- Map.lookup coord state = state
+update trackMap state coord = nextState
   where
-    nextState = case Map.lookup nextCoord state of
-        Nothing -> Right (foldr ($) state updates)
-        _       -> Left nextCoord
+    nextState = foldr ($) state updates
     cart      = state Map.! coord
     nextCoord = case cart of
         (North, _) -> coord + V2 0 (-1)
@@ -65,8 +66,11 @@ update trackMap (Right state) coord = nextState
         (West , _) -> coord + V2 (-1) 0
         (East , _) -> coord + V2 1 0
     apply toState = foldr ($) toState updates
-    updates       = [deleteCurrent, addNew]
+    updates       = case Map.lookup nextCoord state of
+        Nothing -> [deleteCurrent, addNew]
+        _       -> [deleteCurrent, deleteNew]
     deleteCurrent = Map.delete coord
+    deleteNew     = Map.delete nextCoord
     addNew        = Map.insert nextCoord $ case trackMap ! nextCoord of
         Just Intersection  -> turnedCart
         Just (Corner True) -> (, turn : rest) $ case direction of
