@@ -1,17 +1,24 @@
 #!/usr/bin/env stack
 -- stack --resolver lts-12.20 --install-ghc runghc
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 import Data.Ord (compare, comparing, Ordering)
 import Linear.V2 (V2(..))
 import qualified Data.Array.IArray as Arr
+import Data.Ix (range)
 import Data.List (foldr, sortOn, groupBy, minimumBy)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, isNothing, listToMaybe)
 import Data.Foldable (foldlM)
 import Data.Either (either)
+import Data.Graph.Inductive.Graph (mkGraph, Graph, LPath(..))
+import Data.Graph.Inductive.Query.SP (spTree, LRTree)
+import Data.Graph.Inductive.PatriciaTree (Gr)
+import Data.Graph.Inductive.Internal.RootPath (getDistance)
+
+import Debug.Trace (trace)
 
 type Coord = V2 Int
 type World = Arr.Array Coord IsWall
@@ -35,7 +42,12 @@ main :: IO ()
 main = do
     -- input <- parseInput <$> readFile "day15.input"
     let (world, players) = parseInput testInput
+    print $ bestPaths world players (V2 1 1) (V2 2 2)
     either (putPretty world) (putPretty world) $ tick world players
+    either (putPretty world) (putPretty world) $ tick world =<< tick world players
+    either (putPretty world) (putPretty world) $ tick world =<< tick world =<< tick world players
+    either (putPretty world) (putPretty world) $ tick world =<< tick world =<< tick world =<< tick world players
+    either (putPretty world) (putPretty world) $ tick world =<< tick world =<< tick world =<< tick world =<< tick world players
 
 tick :: World -> Players -> Either Players Players
 tick world players = foldlM (takeTurn world) players playersInOrder
@@ -66,7 +78,7 @@ move world p players | enemyInRange || null reachableDestinations = (p, players)
     reachableDestinations = filter (not . null . snd) bestPathsToDestinations
     dist :: (Coord, [Path]) -> Int
     dist (_, paths) = length $ head paths
-    bestPathsToDestinations = zip destinations (bestPaths (fst p) <$> destinations)
+    bestPathsToDestinations = zip destinations (bestPaths world players (fst p) <$> destinations)
     destinations            = filter (isEmpty world players) enemyAdjacencies
     enemyAdjacencies :: [Coord]
     enemyAdjacencies = concatMap adjacencies $ Map.keys enemies
@@ -78,8 +90,30 @@ adjacencies c = (+ c) <$> [V2 0 (-1), V2 (-1) 0, V2 1 0, V2 0 1]
 isEmpty :: World -> Players -> Coord -> Bool
 isEmpty world players c = not (world Arr.! c) && isNothing (players Map.!? c)
 
-bestPaths :: Coord -> Coord -> [Path]
-bestPaths from to = []
+bestPaths :: World -> Players -> Coord -> Coord -> [Path]
+bestPaths world players from to = paths
+  where
+    paths = case distance of
+              Nothing -> []
+              Just d -> drop 1 . reverse . fmap unNode . unLPath <$> filter (best d) shortestPaths
+    best d (LP []) = False
+    best d (LP ((w, d'):_)) = w == fst (mkNode to) && d == d'
+    distance = getDistance (fst $ mkNode to) shortestPaths
+    shortestPaths :: LRTree Int
+    shortestPaths = spTree (fst $ mkNode from) graph
+    graph :: Gr Coord Int
+    graph = mkGraph (mkNode <$> nodes) (mkEdge <$> edges)
+    nodes :: [Coord]
+    nodes = filter included $ range $ Arr.bounds world
+    edges :: [(Coord, Coord)]
+    edges = concatMap (\c -> fmap (c, ) $ filter included $ adjacencies c) nodes
+    included c = c == from || c == to || isEmpty world players c
+    mkNode :: Coord -> (Int, Coord)
+    mkNode (V2 x y) = (x + 1000 * y, V2 x y)
+    mkEdge :: (Coord, Coord) -> (Int, Int, Int)
+    mkEdge (a, b) = (fst $ mkNode a, fst $ mkNode b, 1)
+    unNode :: (Int, Int) -> Coord
+    unNode (i, _) = uncurry (flip V2) $ divMod i 1000
 
 attack :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
 attack world p players = (p, players)
