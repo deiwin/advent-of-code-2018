@@ -50,27 +50,27 @@ takeTurn world players p
     newPlayers = snd $ uncurry (attack world) $ move world p players
 
 move :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
-move world p players
-  | enemyInRange || null reachableDestinations = (p, players)
-  | otherwise = (newP, newPlayers)
+move world p players | enemyInRange || null reachableDestinations = (p, players)
+                     | otherwise = (newP, newPlayers)
   where
     enemyInRange = not $ null $ catMaybes $ (players Map.!?) <$> adjacencies (fst p)
-    newPlayers = uncurry Map.insert newP $ Map.delete (fst p) players
-    newP = (step, snd p)
+    newPlayers   = uncurry Map.insert newP $ Map.delete (fst p) players
+    newP         = (step, snd p)
     step :: Coord
-    step = minimumBy (comparing readingOrder) potentialFirstSteps
+    step                = minimumBy (comparing readingOrder) potentialFirstSteps
     potentialFirstSteps = head <$> snd chosenDestination
-    chosenDestination = minimumBy (comparing (readingOrder . fst)) closestDestinations
-    closestDestinations = let d = minimum (dist <$> reachableDestinations)
-                           in filter ((== d) . dist) bestPathsToDestinations
+    chosenDestination   = minimumBy (comparing (readingOrder . fst)) closestDestinations
+    closestDestinations =
+        let d = minimum (dist <$> reachableDestinations) in filter ((== d) . dist) bestPathsToDestinations
     reachableDestinations :: [(Coord, [Path])]
     reachableDestinations = filter (not . null . snd) bestPathsToDestinations
     dist :: (Coord, [Path]) -> Int
     dist (_, paths) = length $ head paths
     bestPathsToDestinations = zip destinations (bestPaths (fst p) <$> destinations)
     destinations            = filter (isEmpty world players) enemyAdjacencies
-    enemyAdjacencies :: [Coord] = concatMap adjacencies $ Map.keys enemies
-    enemies = Map.filter (areEnemies $ snd p) players
+    enemyAdjacencies :: [Coord]
+    enemyAdjacencies = concatMap adjacencies $ Map.keys enemies
+    enemies          = Map.filter (areEnemies $ snd p) players
 
 adjacencies :: Coord -> [Coord]
 adjacencies c = (+ c) <$> [V2 0 (-1), V2 (-1) 0, V2 1 0, V2 0 1]
