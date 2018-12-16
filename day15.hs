@@ -73,7 +73,7 @@ move world p players | enemyInRange || null reachableDestinations = (p, players)
     potentialFirstSteps = head <$> snd chosenDestination
     chosenDestination   = minimumBy (comparing (readingOrder . fst)) closestDestinations
     closestDestinations =
-        let d = minimum (dist <$> reachableDestinations) in filter ((== d) . dist) bestPathsToDestinations
+        let d = minimum (dist <$> reachableDestinations) in filter ((== d) . dist) reachableDestinations
     reachableDestinations :: [(Coord, [Path])]
     reachableDestinations = filter (not . null . snd) bestPathsToDestinations
     dist :: (Coord, [Path]) -> Int
