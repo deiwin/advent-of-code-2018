@@ -65,7 +65,7 @@ move :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
 move world p players | enemyInRange || null reachableDestinations = (p, players)
                      | otherwise = (newP, newPlayers)
   where
-    enemyInRange = not $ null $ catMaybes $ (players Map.!?) <$> adjacencies (fst p)
+    enemyInRange = any (areEnemies $ snd p) $ catMaybes $ (players Map.!?) <$> adjacencies (fst p)
     newPlayers   = uncurry Map.insert newP $ Map.delete (fst p) players
     newP         = (step, snd p)
     step :: Coord
