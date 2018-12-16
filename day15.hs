@@ -13,12 +13,9 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, isNothing, listToMaybe)
 import Data.Foldable (foldlM)
 import Data.Either (either)
-import Data.Graph.Inductive.Graph (mkGraph, Graph, LPath(..))
-import Data.Graph.Inductive.Query.SP (spTree, LRTree)
+import Data.Graph.Inductive.Graph (mkGraph, Graph)
+import Data.Graph.Inductive.Query.SP (sp)
 import Data.Graph.Inductive.PatriciaTree (Gr)
-import Data.Graph.Inductive.Internal.RootPath (getDistance)
-
-import Debug.Trace (trace)
 
 type Coord = V2 Int
 type World = Arr.Array Coord IsWall
@@ -27,25 +24,26 @@ data Player = Elf Int | Goblin Int deriving (Show, Eq, Ord)
 type IsWall = Bool
 type Path = [Coord]
 
--- testInput = unlines [ "#########"
---                     , "#G..G..G#"
---                     , "#.......#"
---                     , "#.......#"
---                     , "#G..E..G#"
---                     , "#.......#"
---                     , "#.......#"
---                     , "#G..G..G#"
---                     , "#########"
+testInput = unlines [ "#########"
+                    , "#G..G..G#"
+                    , "#.......#"
+                    , "#.......#"
+                    , "#G..E..G#"
+                    , "#.......#"
+                    , "#.......#"
+                    , "#G..G..G#"
+                    , "#########"
+                    ]
+
+-- testInput = unlines [ "#######"
+--                     , "#.G...#"
+--                     , "#...EG#"
+--                     , "#.#.#G#"
+--                     , "#..G#E#"
+--                     , "#.....#"
+--                     , "#######"
 --                     ]
 
-testInput = unlines [ "#######"
-                    , "#.G...#"
-                    , "#...EG#"
-                    , "#.#.#G#"
-                    , "#..G#E#"
-                    , "#.....#"
-                    , "#######"
-                    ]
 main :: IO ()
 main = do
     -- input <- parseInput <$> readFile "day15.input"
@@ -101,14 +99,8 @@ isEmpty world players c = not (world Arr.! c) && isNothing (players Map.!? c)
 bestPaths :: World -> Players -> Coord -> Coord -> [Path]
 bestPaths world players from to = paths
   where
-    paths = case distance of
-              Nothing -> []
-              Just d -> drop 1 . reverse . fmap unNode . unLPath <$> filter (best d) shortestPaths
-    best d (LP []) = False
-    best d (LP ((w, d'):_)) = w == fst (mkNode to) && d == d'
-    distance = getDistance (fst $ mkNode to) shortestPaths
-    shortestPaths :: LRTree Int
-    shortestPaths = spTree (fst $ mkNode from) graph
+    paths = catMaybes [drop 1 . fmap unNode <$> shortestPath]
+    shortestPath = sp (fst $ mkNode from) (fst $ mkNode to) graph
     graph :: Gr Coord Int
     graph = mkGraph (mkNode <$> nodes) (mkEdge <$> edges)
     nodes :: [Coord]
@@ -120,8 +112,8 @@ bestPaths world players from to = paths
     mkNode (V2 x y) = (x + 1000 * y, V2 x y)
     mkEdge :: (Coord, Coord) -> (Int, Int, Int)
     mkEdge (a, b) = (fst $ mkNode a, fst $ mkNode b, 1)
-    unNode :: (Int, Int) -> Coord
-    unNode (i, _) = uncurry (flip V2) $ divMod i 1000
+    unNode :: Int -> Coord
+    unNode i = uncurry (flip V2) $ divMod i 1000
 
 attack :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
 attack world p players = case chosenEnemy of
