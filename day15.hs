@@ -7,7 +7,7 @@ import Data.Ord (compare, comparing, Ordering)
 import Linear.V2 (V2(..))
 import qualified Data.Array.IArray as Arr
 import Data.Ix (range)
-import Data.List (foldr, sortOn, groupBy, minimumBy)
+import Data.List (foldr, sortOn, groupBy, minimumBy, sortBy)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, isNothing, listToMaybe)
@@ -27,17 +27,25 @@ data Player = Elf Int | Goblin Int deriving (Show, Eq, Ord)
 type IsWall = Bool
 type Path = [Coord]
 
-testInput = unlines [ "#########"
-                    , "#G..G..G#"
-                    , "#.......#"
-                    , "#.......#"
-                    , "#G..E..G#"
-                    , "#.......#"
-                    , "#.......#"
-                    , "#G..G..G#"
-                    , "#########"
-                    ]
+-- testInput = unlines [ "#########"
+--                     , "#G..G..G#"
+--                     , "#.......#"
+--                     , "#.......#"
+--                     , "#G..E..G#"
+--                     , "#.......#"
+--                     , "#.......#"
+--                     , "#G..G..G#"
+--                     , "#########"
+--                     ]
 
+testInput = unlines [ "#######"
+                    , "#.G...#"
+                    , "#...EG#"
+                    , "#.#.#G#"
+                    , "#..G#E#"
+                    , "#.....#"
+                    , "#######"
+                    ]
 main :: IO ()
 main = do
     -- input <- parseInput <$> readFile "day15.input"
@@ -116,7 +124,23 @@ bestPaths world players from to = paths
     unNode (i, _) = uncurry (flip V2) $ divMod i 1000
 
 attack :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
-attack world p players = (p, players)
+attack world p players = case chosenEnemy of
+                           Nothing -> (p, players)
+                           Just enemy -> (p, newPlayers enemy)
+  where
+    newPlayers attackedEnemy = let newEnemy = damage attackedEnemy
+                                in if hp newEnemy <= 0
+                                      then Map.delete (fst attackedEnemy) players
+                                      else uncurry Map.insert newEnemy players
+    updatedEnemy = damage <$> chosenEnemy
+    damage (c, Elf hp) = (c, Elf $ hp - 3)
+    damage (c, Goblin hp) = (c, Goblin $ hp - 3)
+    chosenEnemy = listToMaybe $ sortBy enemyOrder enemiesInRange
+    enemyOrder = comparing hp <> comparing (readingOrder . fst)
+    hp (_, Elf x) = x
+    hp (_, Goblin x) = x
+    enemiesInRange = filter (areEnemies (snd p) . snd) $ catMaybes $ getPlayer <$> adjacencies (fst p)
+    getPlayer c = (c, ) <$> players Map.!? c
 
 putPretty :: World -> Players -> IO ()
 putPretty w p = putStr $ pretty w p
