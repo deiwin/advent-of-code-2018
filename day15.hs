@@ -10,62 +10,129 @@ import Data.Ix (range)
 import Data.List (foldr, sortOn, groupBy, minimumBy, sortBy)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (catMaybes, isNothing, listToMaybe)
+import Data.Maybe (catMaybes, mapMaybe, isNothing, listToMaybe)
 import Data.Foldable (foldlM)
-import Data.Either (either)
+import Data.Either (either, isRight)
 import Data.Graph.Inductive.Graph (mkGraph, Graph)
 import Data.Graph.Inductive.Query.SP (sp)
 import Data.Graph.Inductive.PatriciaTree (Gr)
 
+import Debug.Trace (trace)
+
 type Coord = V2 Int
 type World = Arr.Array Coord IsWall
 type Players = Map Coord Player
-data Player = Elf Int | Goblin Int deriving (Show, Eq, Ord)
+data Player = Elf Int Int | Goblin Int Int deriving (Show, Eq, Ord)
 type IsWall = Bool
 type Path = [Coord]
 
-testInput = unlines [ "#########"
-                    , "#G..G..G#"
-                    , "#.......#"
-                    , "#.......#"
-                    , "#G..E..G#"
-                    , "#.......#"
-                    , "#.......#"
-                    , "#G..G..G#"
+-- testInput = unlines [ "#########"
+--                     , "#G..G..G#"
+--                     , "#.......#"
+--                     , "#.......#"
+--                     , "#G..E..G#"
+--                     , "#.......#"
+--                     , "#.......#"
+--                     , "#G..G..G#"
+--                     , "#########"
+--                     ]
+
+testInpu0 = unlines [ "#######"
+                    , "#.G...#"
+                    , "#...EG#"
+                    , "#.#.#G#"
+                    , "#..G#E#"
+                    , "#.....#"
+                    , "#######"
+                    ]
+testInput = unlines [ "#######"
+                    , "#G..#E#"
+                    , "#E#E.E#"
+                    , "#G.##.#"
+                    , "#...#E#"
+                    , "#...E.#"
+                    , "#######"
+                    ]
+testInpu2 = unlines [ "#######"
+                    , "#E..EG#"
+                    , "#.#G.E#"
+                    , "#E.##E#"
+                    , "#G..#.#"
+                    , "#..E#.#"
+                    , "#######"
+                    ]
+testInpu3 = unlines [ "#######"
+                    , "#E.G#.#"
+                    , "#.#G..#"
+                    , "#G.#.G#"
+                    , "#G..#.#"
+                    , "#...E.#"
+                    , "#######"
+                    ]
+testInpu4 = unlines [ "#######"
+                    , "#.E...#"
+                    , "#.#..G#"
+                    , "#.###.#"
+                    , "#E#G#G#"
+                    , "#...#G#"
+                    , "#######"
+                    ]
+testInpu5 = unlines [ "#########"
+                    , "#G......#"
+                    , "#.E.#...#"
+                    , "#..##..G#"
+                    , "#...##..#"
+                    , "#...#...#"
+                    , "#.G...G.#"
+                    , "#.....G.#"
                     , "#########"
                     ]
 
--- testInput = unlines [ "#######"
---                     , "#.G...#"
---                     , "#...EG#"
---                     , "#.#.#G#"
---                     , "#..G#E#"
---                     , "#.....#"
---                     , "#######"
---                     ]
+newTest = unlines [ "####"
+                  , "##E#"
+                  , "#GG#"
+                  , "####"
+                  ]
 
 main :: IO ()
 main = do
-    -- input <- parseInput <$> readFile "day15.input"
-    let (world, players) = parseInput testInput
-    print $ bestPaths world players (V2 1 1) (V2 2 2)
-    either (putPretty world) (putPretty world) $ tick world players
-    either (putPretty world) (putPretty world) $ tick world =<< tick world players
-    either (putPretty world) (putPretty world) $ tick world =<< tick world =<< tick world players
-    either (putPretty world) (putPretty world) $ tick world =<< tick world =<< tick world =<< tick world players
-    either (putPretty world) (putPretty world) $ tick world =<< tick world =<< tick world =<< tick world =<< tick world players
+    (world, players) <- parseInput <$> readFile "day15.input"
+    print $ uncurry outcome $ finishCombat world players
+    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu0
+    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInput
+    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu2
+    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu3
+    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu4
+    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu5
+    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput newTest
+
+outcome :: Int -> Players -> Int
+outcome rounds players = rounds * sum (hp <$> Map.elems players)
+
+finishCombat :: World -> Players -> (Int, Players)
+finishCombat world players = (i, finalPlayers)
+  where
+      (i, Left finalPlayers) = head
+        $ dropWhile (isRight . snd)
+        $ zip [(-1)..]
+        $ iterate (>>= tick world) (return players)
 
 tick :: World -> Players -> Either Players Players
+tick world players | trace (pretty world players) False = undefined
 tick world players = foldlM (takeTurn world) players playersInOrder
   where
     playersInOrder = sortOn (readingOrder . fst) $ Map.assocs players
 
 takeTurn :: World -> Players -> (Coord, Player) -> Either Players Players
-takeTurn world players p
-  | Map.size (Map.filter (areEnemies $ snd p) players) == 0 = Left players
-  | otherwise = Right newPlayers
+takeTurn world players (c, p)
+  | Nothing <- updatedPlayer = Right players -- Skip if dead
+  | Just p' <- updatedPlayer
+  , playerID p' /= playerID p = Right players -- Skip if other player in place
+  | Map.size (Map.filter (areEnemies p) players) == 0 = Left players -- End if over
+  | Just p' <- updatedPlayer = Right (newPlayers p')
   where
-    newPlayers = snd $ uncurry (attack world) $ move world p players
+    newPlayers p' = snd $ uncurry (attack world) $ move world (c, p') players
+    updatedPlayer = players Map.!? c
 
 move :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
 move world p players | enemyInRange || null reachableDestinations = (p, players)
@@ -78,12 +145,11 @@ move world p players | enemyInRange || null reachableDestinations = (p, players)
     step                = minimumBy (comparing readingOrder) potentialFirstSteps
     potentialFirstSteps = head <$> snd chosenDestination
     chosenDestination   = minimumBy (comparing (readingOrder . fst)) closestDestinations
-    closestDestinations =
-        let d = minimum (dist <$> reachableDestinations) in filter ((== d) . dist) reachableDestinations
+    closestDestinations = filterMinimumOn dist reachableDestinations
     reachableDestinations :: [(Coord, [Path])]
     reachableDestinations = filter (not . null . snd) bestPathsToDestinations
     dist :: (Coord, [Path]) -> Int
-    dist (_, paths) = length $ head paths
+    dist (_, paths) = minimum $ length <$> paths
     bestPathsToDestinations = zip destinations (bestPaths world players (fst p) <$> destinations)
     destinations            = filter (isEmpty world players) enemyAdjacencies
     enemyAdjacencies :: [Coord]
@@ -96,11 +162,15 @@ adjacencies c = (+ c) <$> [V2 0 (-1), V2 (-1) 0, V2 1 0, V2 0 1]
 isEmpty :: World -> Players -> Coord -> Bool
 isEmpty world players c = not (world Arr.! c) && isNothing (players Map.!? c)
 
+filterMinimumOn :: Ord b => (a -> b) -> [a] -> [a]
+filterMinimumOn f xs = filter ((== g) . f) xs where g = minimum $ f <$> xs
+
 bestPaths :: World -> Players -> Coord -> Coord -> [Path]
 bestPaths world players from to = paths
   where
-    paths = catMaybes [drop 1 . fmap unNode <$> shortestPath]
-    shortestPath = sp (fst $ mkNode from) (fst $ mkNode to) graph
+    paths = filterMinimumOn length $ fmap unNode <$> shortestPaths
+    shortestPaths = mapMaybe shortestPath $ filter included $ adjacencies from
+    shortestPath x = sp (fst $ mkNode x) (fst $ mkNode to) graph
     graph :: Gr Coord Int
     graph = mkGraph (mkNode <$> nodes) (mkEdge <$> edges)
     nodes :: [Coord]
@@ -121,18 +191,23 @@ attack world p players = case chosenEnemy of
                            Just enemy -> (p, newPlayers enemy)
   where
     newPlayers attackedEnemy = let newEnemy = damage attackedEnemy
-                                in if hp newEnemy <= 0
+                                in if hp (snd newEnemy) <= 0
                                       then Map.delete (fst attackedEnemy) players
                                       else uncurry Map.insert newEnemy players
     updatedEnemy = damage <$> chosenEnemy
-    damage (c, Elf hp) = (c, Elf $ hp - 3)
-    damage (c, Goblin hp) = (c, Goblin $ hp - 3)
+    damage (c, Elf id hp) = (c, Elf id $ hp - 3)
+    damage (c, Goblin id hp) = (c, Goblin id $ hp - 3)
     chosenEnemy = listToMaybe $ sortBy enemyOrder enemiesInRange
-    enemyOrder = comparing hp <> comparing (readingOrder . fst)
-    hp (_, Elf x) = x
-    hp (_, Goblin x) = x
+    enemyOrder = comparing (hp . snd) <> comparing (readingOrder . fst)
     enemiesInRange = filter (areEnemies (snd p) . snd) $ catMaybes $ getPlayer <$> adjacencies (fst p)
     getPlayer c = (c, ) <$> players Map.!? c
+
+hp :: Player -> Int
+hp (Elf    _ x) = x
+hp (Goblin _ x) = x
+playerID :: Player -> Int
+playerID (Elf    x _) = x
+playerID (Goblin x _) = x
 
 putPretty :: World -> Players -> IO ()
 putPretty w p = putStr $ pretty w p
@@ -144,10 +219,10 @@ pretty world players = unlines ls
     prettyRow (s, players) = s <> " " <> show (catMaybes players)
     foldRow = foldr fCell ("", [])
     fCell (coord, isWall) (s, rowPlayers) = let p = Map.lookup coord players in (char isWall p : s, p : rowPlayers)
-    char True _                = '#'
-    char False (Just (Elf    _)) = 'E'
-    char False (Just (Goblin _)) = 'G'
-    char False Nothing         = '.'
+    char True  _                   = '#'
+    char False (Just (Elf    _ _)) = 'E'
+    char False (Just (Goblin _ _)) = 'G'
+    char False Nothing             = '.'
     keyRow (V2 _ y, _) = y
     keySameRow a b = keyRow a == keyRow b
 
@@ -161,8 +236,8 @@ areEnemies a b = not $ areAllies a b
 areAllies :: Player -> Player -> Bool
 areAllies a b = isElf a == isElf b
 isElf :: Player -> Bool
-isElf (Elf _) = True
-isElf _       = False
+isElf (Elf _ _) = True
+isElf _         = False
 isGoblin :: Player -> Bool
 isGoblin = not . isElf
 
@@ -176,11 +251,12 @@ parseInput input = (world, players)
     assocs  = do
         (line, y) <- zip (lines input) [0 ..]
         (char, x) <- zip line [0 ..]
-        return (V2 x y, parseChar char)
+        let id = x + 1000 * y
+        return (V2 x y, parseChar id char)
     getCell (coord, (cell, _)) = (coord, cell)
     getPlayer (coord, (_, Nothing)    ) = Nothing
     getPlayer (coord, (_, Just player)) = Just (coord, player)
-    parseChar '#' = (True, Nothing)
-    parseChar '.' = (False, Nothing)
-    parseChar 'E' = (False, Just (Elf 200))
-    parseChar 'G' = (False, Just (Goblin 200))
+    parseChar _  '#' = (True, Nothing)
+    parseChar _  '.' = (False, Nothing)
+    parseChar id 'E' = (False, Just (Elf id 200))
+    parseChar id 'G' = (False, Just (Goblin id 200))
