@@ -14,8 +14,9 @@ import Data.Maybe (catMaybes, mapMaybe, isNothing, listToMaybe)
 import Data.Foldable (foldlM)
 import Data.Either (either, isRight)
 import Data.Graph.Inductive.Graph (mkGraph, Graph)
-import Data.Graph.Inductive.Query.SP (sp)
+import Data.Graph.Inductive.Query.SP (spTree)
 import Data.Graph.Inductive.PatriciaTree (Gr)
+import Data.Graph.Inductive.Internal.RootPath (getDistance)
 
 import Debug.Trace (trace)
 
@@ -29,34 +30,43 @@ type Path = [Coord]
 main :: IO ()
 main = do
     (world, players) <- parseInput <$> readFile "day15.input"
-    print $ uncurry outcome $ finishCombat world players
+    print $ uncurry outcome $ finishCombat 3 world players
+    print $ uncurry outcome $ finishCombatWithoutDeaths world players
 
 outcome :: Int -> Players -> Int
 outcome rounds players = rounds * sum (hp <$> Map.elems players)
 
-finishCombat :: World -> Players -> (Int, Players)
-finishCombat world players = (i, finalPlayers)
+finishCombatWithoutDeaths :: World -> Players -> (Int, Players)
+finishCombatWithoutDeaths world players = head $ dropWhile anElfDied results
+  where
+    anElfDied (_, players') = elfCount players' < initialElfCount
+    results = (\x -> finishCombat x world players) <$> [4..]
+    initialElfCount = elfCount players
+    elfCount m = Map.size $ Map.filter isElf m
+
+finishCombat :: Int -> World -> Players -> (Int, Players)
+finishCombat power world players = (i, finalPlayers)
   where
       (i, Left finalPlayers) = head
         $ dropWhile (isRight . snd)
         $ zip [(-1)..]
-        $ iterate (>>= tick world) (return players)
+        $ iterate (>>= tick world power) (return players)
 
-tick :: World -> Players -> Either Players Players
-tick world players | trace (pretty world players) False = undefined
-tick world players = foldlM (takeTurn world) players playersInOrder
+tick :: World -> Int -> Players -> Either Players Players
+tick world power players | trace (pretty world players) False = undefined
+tick world power players = foldlM (takeTurn world power) players playersInOrder
   where
     playersInOrder = sortOn (readingOrder . fst) $ Map.assocs players
 
-takeTurn :: World -> Players -> (Coord, Player) -> Either Players Players
-takeTurn world players (c, p)
+takeTurn :: World -> Int -> Players -> (Coord, Player) -> Either Players Players
+takeTurn world power players (c, p)
   | Nothing <- updatedPlayer = Right players -- Skip if dead
   | Just p' <- updatedPlayer
   , playerID p' /= playerID p = Right players -- Skip if other player in place
   | Map.size (Map.filter (areEnemies p) players) == 0 = Left players -- End if over
   | Just p' <- updatedPlayer = Right (newPlayers p')
   where
-    newPlayers p' = snd $ uncurry (attack world) $ move world (c, p') players
+    newPlayers p' = snd $ uncurry (attack world power) $ move world (c, p') players
     updatedPlayer = players Map.!? c
 
 move :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
@@ -67,15 +77,15 @@ move world p players | enemyInRange || null reachableDestinations = (p, players)
     newPlayers   = uncurry Map.insert newP $ Map.delete (fst p) players
     newP         = (step, snd p)
     step :: Coord
-    step                = minimumBy (comparing readingOrder) potentialFirstSteps
-    potentialFirstSteps = head <$> snd chosenDestination
+    step                = fst $ snd chosenDestination
     chosenDestination   = minimumBy (comparing (readingOrder . fst)) closestDestinations
     closestDestinations = filterMinimumOn dist reachableDestinations
-    reachableDestinations :: [(Coord, [Path])]
-    reachableDestinations = filter (not . null . snd) bestPathsToDestinations
-    dist :: (Coord, [Path]) -> Int
-    dist (_, paths) = minimum $ length <$> paths
-    bestPathsToDestinations = zip destinations (bestPaths world players (fst p) <$> destinations)
+    reachableDestinations :: [(Coord, (Coord, Int))]
+    reachableDestinations = catMaybes bestStepsToDestination
+    dist :: (Coord, (Coord, Int)) -> Int
+    dist (_, (_, d)) = d
+    bestStepsToDestination = (\c -> (c, ) <$> bestStep world players gr (fst p) c) <$> destinations
+    gr = graph world players
     destinations            = filter (isEmpty world players) enemyAdjacencies
     enemyAdjacencies :: [Coord]
     enemyAdjacencies = concatMap adjacencies $ Map.keys enemies
@@ -90,19 +100,25 @@ isEmpty world players c = not (world Arr.! c) && isNothing (players Map.!? c)
 filterMinimumOn :: Ord b => (a -> b) -> [a] -> [a]
 filterMinimumOn f xs = filter ((== g) . f) xs where g = minimum $ f <$> xs
 
-bestPaths :: World -> Players -> Coord -> Coord -> [Path]
-bestPaths world players from to = paths
+bestStep :: World -> Players -> Gr Coord Int -> Coord -> Coord -> Maybe (Coord, Int)
+bestStep world players gr from to = step
   where
-    paths = filterMinimumOn length $ fmap unNode <$> shortestPaths
-    shortestPaths = mapMaybe shortestPath $ filter included $ adjacencies from
-    shortestPath x = sp (fst $ mkNode x) (fst $ mkNode to) graph
-    graph :: Gr Coord Int
-    graph = mkGraph (mkNode <$> nodes) (mkEdge <$> edges)
+    step = if null shortestSteps
+              then Nothing
+              else listToMaybe $ sortBy (comparing snd <> comparing (readingOrder . fst)) shortestSteps
+    shortestSteps = mapMaybe shortestStep $ filter (isEmpty world players) $ adjacencies from
+    shortestStep x = (x, ) <$> getDistance (mkNode x) tree
+    tree = spTree (mkNode to) gr
+    mkNode :: Coord -> Int
+    mkNode (V2 x y) = x + 1000 * y
+
+graph :: World -> Players -> Gr Coord Int
+graph world players = mkGraph (mkNode <$> nodes) (mkEdge <$> edges)
+  where
     nodes :: [Coord]
-    nodes = filter included $ range $ Arr.bounds world
+    nodes = filter (isEmpty world players) $ range $ Arr.bounds world
     edges :: [(Coord, Coord)]
-    edges = concatMap (\c -> fmap (c, ) $ filter included $ adjacencies c) nodes
-    included c = c == from || c == to || isEmpty world players c
+    edges = concatMap (\c -> fmap (c, ) $ filter (isEmpty world players) $ adjacencies c) nodes
     mkNode :: Coord -> (Int, Coord)
     mkNode (V2 x y) = (x + 1000 * y, V2 x y)
     mkEdge :: (Coord, Coord) -> (Int, Int, Int)
@@ -110,8 +126,8 @@ bestPaths world players from to = paths
     unNode :: Int -> Coord
     unNode i = uncurry (flip V2) $ divMod i 1000
 
-attack :: World -> (Coord, Player) -> Players -> ((Coord, Player), Players)
-attack world p players = case chosenEnemy of
+attack :: World -> Int -> (Coord, Player) -> Players -> ((Coord, Player), Players)
+attack world power p players = case chosenEnemy of
                            Nothing -> (p, players)
                            Just enemy -> (p, newPlayers enemy)
   where
@@ -121,7 +137,7 @@ attack world p players = case chosenEnemy of
                                       else uncurry Map.insert newEnemy players
     updatedEnemy = damage <$> chosenEnemy
     damage (c, Elf id hp) = (c, Elf id $ hp - 3)
-    damage (c, Goblin id hp) = (c, Goblin id $ hp - 3)
+    damage (c, Goblin id hp) = (c, Goblin id $ hp - power)
     chosenEnemy = listToMaybe $ sortBy enemyOrder enemiesInRange
     enemyOrder = comparing (hp . snd) <> comparing (readingOrder . fst)
     enemiesInRange = filter (areEnemies (snd p) . snd) $ catMaybes $ getPlayer <$> adjacencies (fst p)
