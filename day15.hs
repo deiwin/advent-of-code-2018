@@ -26,85 +26,10 @@ data Player = Elf Int Int | Goblin Int Int deriving (Show, Eq, Ord)
 type IsWall = Bool
 type Path = [Coord]
 
--- testInput = unlines [ "#########"
---                     , "#G..G..G#"
---                     , "#.......#"
---                     , "#.......#"
---                     , "#G..E..G#"
---                     , "#.......#"
---                     , "#.......#"
---                     , "#G..G..G#"
---                     , "#########"
---                     ]
-
-testInpu0 = unlines [ "#######"
-                    , "#.G...#"
-                    , "#...EG#"
-                    , "#.#.#G#"
-                    , "#..G#E#"
-                    , "#.....#"
-                    , "#######"
-                    ]
-testInput = unlines [ "#######"
-                    , "#G..#E#"
-                    , "#E#E.E#"
-                    , "#G.##.#"
-                    , "#...#E#"
-                    , "#...E.#"
-                    , "#######"
-                    ]
-testInpu2 = unlines [ "#######"
-                    , "#E..EG#"
-                    , "#.#G.E#"
-                    , "#E.##E#"
-                    , "#G..#.#"
-                    , "#..E#.#"
-                    , "#######"
-                    ]
-testInpu3 = unlines [ "#######"
-                    , "#E.G#.#"
-                    , "#.#G..#"
-                    , "#G.#.G#"
-                    , "#G..#.#"
-                    , "#...E.#"
-                    , "#######"
-                    ]
-testInpu4 = unlines [ "#######"
-                    , "#.E...#"
-                    , "#.#..G#"
-                    , "#.###.#"
-                    , "#E#G#G#"
-                    , "#...#G#"
-                    , "#######"
-                    ]
-testInpu5 = unlines [ "#########"
-                    , "#G......#"
-                    , "#.E.#...#"
-                    , "#..##..G#"
-                    , "#...##..#"
-                    , "#...#...#"
-                    , "#.G...G.#"
-                    , "#.....G.#"
-                    , "#########"
-                    ]
-
-newTest = unlines [ "####"
-                  , "##E#"
-                  , "#GG#"
-                  , "####"
-                  ]
-
 main :: IO ()
 main = do
     (world, players) <- parseInput <$> readFile "day15.input"
     print $ uncurry outcome $ finishCombat world players
-    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu0
-    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInput
-    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu2
-    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu3
-    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu4
-    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput testInpu5
-    -- print $ uncurry outcome $ uncurry finishCombat $ parseInput newTest
 
 outcome :: Int -> Players -> Int
 outcome rounds players = rounds * sum (hp <$> Map.elems players)
