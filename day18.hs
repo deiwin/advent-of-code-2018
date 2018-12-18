@@ -4,11 +4,10 @@
 
 import Linear.V2 (V2(..))
 import qualified Data.Array.IArray as Arr
-import Data.Ix (range, inRange)
-import qualified Text.Parsec as P
-import Text.Parsec ((<|>))
-import Data.Maybe (maybeToList)
-import Data.List (sortOn, groupBy, foldr)
+import Data.Ix (inRange)
+import Data.List (foldl', sortOn, groupBy)
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 type Coord = V2 Int
 type Bounds = (Coord, Coord)
@@ -18,8 +17,23 @@ data Cell = Open | Wood | Yard deriving (Show, Eq, Ord)
 main :: IO ()
 main = do
     initialWorld <- parseInput <$> readFile "day18.input"
-    putStr $ pretty (iterate tick initialWorld !! 10)
-    print $ value (iterate tick initialWorld !! 10)
+    print $ value $ nthEvolution initialWorld 10
+    print $ value $ nthEvolution initialWorld 1000000000
+
+nthEvolution :: World -> Int -> World
+nthEvolution world n
+  | n < 1000 = iterate tick world !! n
+  | otherwise = iterate tick loopStartWorld !! loopMod
+  where
+    loopMod = (n - loopStartIndex) `mod` loopSize
+    (loopStartWorld, loopStartIndex) = findLoop world (0, Set.empty)
+    (_, loopSize) = findLoop loopStartWorld (0, Set.empty)
+
+findLoop :: World -> (Int, Set World) -> (World, Int)
+findLoop world (i, seen)
+  | Set.member world seen = (world, i)
+  | otherwise = findLoop world' (i + 1, Set.insert world seen)
+  where world' = tick world
 
 value :: World -> Int
 value world = count Wood * count Yard
