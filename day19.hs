@@ -34,7 +34,7 @@ main = do
     initialState <- parseInput <$> readFile "day19.input"
     let Left finalState = whileRight tick initialState
     print $ finalState ^?! register 0
-    let Left finalState2 = whileRight tick (initialState & register 0 .~ 1)
+    let Left finalState2 = whileRight tick (initialState & registers .~ VU.fromList [22302144,10551376,10551376,0,3,10551376])
     print $ finalState2 ^?! register 0
 
 whileRight :: (a -> Either b a) -> a -> Either b a
