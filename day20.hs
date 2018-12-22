@@ -44,10 +44,10 @@ buildGraph stmts = mkGraph nodes edges
 
 mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set (LEdge Int))
 mkNodesEdges n sss | trace (show (n, length sss)) False = undefined
-mkNodesEdges n [] = (Set.empty, Set.empty)
+mkNodesEdges n [] = (Set.singleton n, Set.empty)
 mkNodesEdges n (SDir dir:rest) = (nodes, edges)
   where
-    nodes = Set.insert 0 $ Set.insert nextN restNodes
+    nodes = Set.insert n restNodes
     edges = Set.insert (n, nextN, 1) restEdges
     nextN = next dir n
     (restNodes, restEdges) = mkNodesEdges nextN rest
