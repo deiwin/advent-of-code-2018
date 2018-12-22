@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
 
-import Data.Graph.Inductive.Graph (mkGraph, Graph, Node, LEdge, LPath(..))
+import Data.Graph.Inductive.Graph (mkGraph, Graph, Node, Edge, LPath(..))
 import Data.Graph.Inductive.Query.SP (spTree)
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Ix (range, inRange)
@@ -39,16 +39,16 @@ buildGraph :: [Stmt] -> G
 buildGraph stmts = mkGraph nodes edges
   where
     nodes = (, ()) <$> toList nodeSeq
-    edges = toList edgeSeq
+    edges = (\(a, b) -> (a, b, 1)) <$> toList edgeSeq
     (nodeSeq, edgeSeq) = mkNodesEdges 0 stmts
 
-mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set (LEdge Int))
+mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set Edge)
 mkNodesEdges n sss | trace (show (n, length sss)) False = undefined
 mkNodesEdges n [] = (Set.singleton n, Set.empty)
 mkNodesEdges n (SDir dir:rest) = (nodes, edges)
   where
     nodes = Set.insert n restNodes
-    edges = Set.insert (n, nextN, 1) restEdges
+    edges = Set.insert (n, nextN) restEdges
     nextN = next dir n
     (restNodes, restEdges) = mkNodesEdges nextN rest
 mkNodesEdges n (Options stmtss:rest) = (nodes, edges)
