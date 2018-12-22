@@ -19,8 +19,6 @@ import Data.Foldable (toList)
 import Data.List (foldl', foldr1, unzip)
 import Data.Bifunctor (bimap)
 
-import Debug.Trace (trace)
-
 data Direction = N | E | S | W deriving (Show, Read)
 data Stmt = SDir Direction | Options [[Stmt]] deriving (Show)
 type Parser = P.Parsec Void String
@@ -29,10 +27,12 @@ type G = Gr () Int
 main :: IO ()
 main = do
     Right stmts <- parseInput . head . lines <$> readFile "day20.input"
-    print $ furthestDistance $ buildGraph stmts
+    let ds = dists $ buildGraph stmts
+    print $ maximum ds
+    print $ length $ filter (>= 1000) ds
 
-furthestDistance :: G -> Int
-furthestDistance g = maximum $ dist . unLPath <$> spTree 0 g
+dists :: G -> [Int]
+dists g = dist . unLPath <$> spTree 0 g
   where
     dist ((_, d):_) = d
 
@@ -44,7 +44,6 @@ buildGraph stmts = mkGraph nodes edges
     (nodeSeq, edgeSeq, _) = mkNodesEdges 0 stmts (Set.empty, Set.empty)
 
 mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set Edge) -> (Set Node, Set Edge, Set Node)
-mkNodesEdges n _ (nodes, edges) | trace (show (n, Set.size nodes, Set.size edges)) False = undefined
 mkNodesEdges n [] (nodes, edges) = (Set.insert n nodes, edges, Set.singleton n)
 mkNodesEdges n (SDir dir:rest) (!accNodes, !accEdges) = mkNodesEdges nextN rest (nodes, edges)
   where
