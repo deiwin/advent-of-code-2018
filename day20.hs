@@ -29,7 +29,7 @@ type G = Gr () Int
 main :: IO ()
 main = do
     Right stmts <- parseInput . head . lines <$> readFile "day20.input"
-    print $ buildGraph stmts
+    print $ furthestDistance $ buildGraph stmts
 
 furthestDistance :: G -> Int
 furthestDistance g = maximum $ dist . unLPath <$> spTree 0 g
@@ -41,19 +41,27 @@ buildGraph stmts = mkGraph nodes edges
   where
     nodes = (, ()) <$> toList nodeSeq
     edges = (\(a, b) -> (a, b, 1)) <$> toList edgeSeq
-    (nodeSeq, edgeSeq) = mkNodesEdges 0 stmts (Set.empty, Set.empty)
+    (nodeSeq, edgeSeq, _) = mkNodesEdges 0 stmts (Set.empty, Set.empty)
 
-mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set Edge) -> (Set Node, Set Edge)
+mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set Edge) -> (Set Node, Set Edge, Set Node)
 mkNodesEdges n _ (nodes, edges) | trace (show (n, Set.size nodes, Set.size edges)) False = undefined
-mkNodesEdges n [] (nodes, edges) = (Set.insert n nodes, edges)
+mkNodesEdges n [] (nodes, edges) = (Set.insert n nodes, edges, Set.singleton n)
 mkNodesEdges n (SDir dir:rest) (!accNodes, !accEdges) = mkNodesEdges nextN rest (nodes, edges)
   where
     nodes = Set.insert n accNodes
     edges = Set.insert (n, nextN) accEdges
     nextN = next dir n
-mkNodesEdges n (Options stmtss:rest) (!accNodes, !accEdges) = foldl' f (accNodes, accEdges) stmtss
+mkNodesEdges n (Options stmtss:rest) (!accNodes, !accEdges)
+  | Set.size endNodes == 1 = mkNodesEdges (head $ toList endNodes) rest (nodes, edges)
+  | otherwise = Set.foldl' sf (nodes, edges, Set.empty) endNodes
   where
-    f (nodes, edges) stmts = mkNodesEdges n (stmts ++ rest) (nodes, edges)
+    sf (nodes, edges, endNodes) endNode =
+        (\(ns, es, ens) -> (ns, es, Set.union ens endNodes))
+            $ mkNodesEdges endNode rest (nodes, edges)
+    (nodes, edges, endNodes) = foldl' f (accNodes, accEdges, Set.empty) stmtss
+    f (nodes, edges, endNodes) stmts =
+        (\(ns, es, ens) -> (ns, es, Set.union ens endNodes))
+            $ mkNodesEdges n stmts (nodes, edges)
 
 xk = 10000
 mkNode :: Int -> Int -> Int
