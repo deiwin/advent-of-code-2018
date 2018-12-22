@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE BangPatterns #-}
 
 import Data.Graph.Inductive.Graph (mkGraph, Graph, Node, Edge, LPath(..))
 import Data.Graph.Inductive.Query.SP (spTree)
@@ -40,21 +41,19 @@ buildGraph stmts = mkGraph nodes edges
   where
     nodes = (, ()) <$> toList nodeSeq
     edges = (\(a, b) -> (a, b, 1)) <$> toList edgeSeq
-    (nodeSeq, edgeSeq) = mkNodesEdges 0 stmts
+    (nodeSeq, edgeSeq) = mkNodesEdges 0 stmts (Set.empty, Set.empty)
 
-mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set Edge)
-mkNodesEdges n sss | trace (show (n, length sss)) False = undefined
-mkNodesEdges n [] = (Set.singleton n, Set.empty)
-mkNodesEdges n (SDir dir:rest) = (nodes, edges)
+mkNodesEdges :: Node -> [Stmt] -> (Set Node, Set Edge) -> (Set Node, Set Edge)
+mkNodesEdges n _ (nodes, edges) | trace (show (n, Set.size nodes, Set.size edges)) False = undefined
+mkNodesEdges n [] (nodes, edges) = (Set.insert n nodes, edges)
+mkNodesEdges n (SDir dir:rest) (!accNodes, !accEdges) = mkNodesEdges nextN rest (nodes, edges)
   where
-    nodes = Set.insert n restNodes
-    edges = Set.insert (n, nextN) restEdges
+    nodes = Set.insert n accNodes
+    edges = Set.insert (n, nextN) accEdges
     nextN = next dir n
-    (restNodes, restEdges) = mkNodesEdges nextN rest
-mkNodesEdges n (Options stmtss:rest) = (nodes, edges)
+mkNodesEdges n (Options stmtss:rest) (!accNodes, !accEdges) = foldl' f (accNodes, accEdges) stmtss
   where
-    (nodes, edges) = bimap Set.unions Set.unions $ unzip $ nodesEdges <$> stmtss
-    nodesEdges stmts = mkNodesEdges n (stmts ++ rest)
+    f (nodes, edges) stmts = mkNodesEdges n (stmts ++ rest) (nodes, edges)
 
 xk = 10000
 mkNode :: Int -> Int -> Int
