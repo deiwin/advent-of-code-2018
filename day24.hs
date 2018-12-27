@@ -4,6 +4,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 
+import Prelude hiding (id)
 import Data.Void (Void)
 import qualified Text.Megaparsec as P
 import qualified Text.Megaparsec.Char as PC
@@ -11,10 +12,14 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Applicative (empty, optional)
 import Data.Char (toUpper)
 import Data.Maybe (fromMaybe)
+import Data.List (foldl', sortBy, partition, nub)
+import Data.Ord (comparing, Down(..))
+import qualified Data.Map.Strict as M
 
 type Parser = P.Parsec Void String
-data DamageType = Slashing | Radiation | Fire | Cold | Bludgeoning deriving (Show, Read)
+data DamageType = Slashing | Radiation | Fire | Cold | Bludgeoning deriving (Show, Read, Eq)
 data DefenseType = Weakness | Immunity deriving (Show, Eq)
+data GroupType = ImmuneSystem | Infection deriving (Show, Eq)
 data Group = Group { unitCount :: !Int
                    , unitHP :: !Int
                    , weaknesses :: ![DamageType]
@@ -22,24 +27,80 @@ data Group = Group { unitCount :: !Int
                    , damageType :: !DamageType
                    , damage :: !Int
                    , initiative :: !Int
+                   , groupType :: !GroupType
+                   , id :: !Int
                    } deriving (Show)
+type State = M.Map Int Group
 
 main :: IO ()
 main = do
-    input <- parseInput <$> readFile "day24.input"
-    print input
+    Right state <- parseInput <$> readFile "day24.input"
+    print $ sum $ unitCount <$> combat state
 
-parseInput :: String -> Either (P.ParseError Char Void) ([Group], [Group])
-parseInput input = do
-    immuneGroups <- parse (drop 1 immuneLines)
-    infectionGroups <- parse (drop 2 infectionLines)
-    return (immuneGroups, infectionGroups)
+combat :: State -> State
+combat state
+  | over = state
+  | otherwise = combat $ fight state
   where
-    parse ls = sequenceA (parseLine <$> ls)
+    over = length (nub $ groupType <$> M.elems state) < 2
+
+fight :: State -> State
+fight state = M.filter ((> 0) . unitCount) attackResult
+  where
+    attackResult = foldl' attack state $ sortBy attackOrder $ M.elems state
+    attack curState attacker
+      | unitCount curAttacker <= 0 = curState
+      | Nothing <- defenderId = curState
+      | Just dId <- defenderId = let defender = curState M.! dId
+                                     unitsLost = damageTakenAgainst defender curAttacker `quot` unitHP defender
+                                     newDefender = defender { unitCount = unitCount defender - unitsLost }
+                                  in M.insert (id newDefender) newDefender curState
+      where
+        curAttacker = curState M.! id attacker
+        defenderId = targetSelection M.!? id attacker
+    attackOrder = comparing (Down . initiative)
+    targetSelection :: M.Map Int Int
+    targetSelection = snd selectionPhase
+    selectionPhase = foldl' selectionF (M.elems state, M.empty) $ sortBy selectionOrder $ M.elems state
+    selectionOrder = comparing (Down . effectivePower) <> comparing (Down . initiative)
+    selectionF (remainingTargets, selectionResult) g =
+        let (allies, enemies) = partition ((== groupType g) . groupType) remainingTargets
+            (bestEnemy:rest) = sortBy (targetOrder g) enemies
+         in case enemies of
+              [] -> (remainingTargets, selectionResult)
+              _  -> if bestEnemy `immuneAgainst` g
+                       then (remainingTargets, selectionResult)
+                       else (allies ++ rest, M.insert (id g) (id bestEnemy) selectionResult)
+    targetOrder g =
+        comparing (`immuneAgainst` g)
+            <> comparing (Down . (`weakAgainst` g))
+            <> comparing (Down . effectivePower)
+            <> comparing (Down . initiative)
+
+damageTakenAgainst :: Group -> Group -> Int
+damageTakenAgainst defender attacker
+  | defender `immuneAgainst` attacker = 0
+  | defender `weakAgainst` attacker = 2 * effectivePower attacker
+  | otherwise = effectivePower attacker
+weakAgainst :: Group -> Group -> Bool
+weakAgainst x against = damageType against `elem` weaknesses x
+immuneAgainst :: Group -> Group -> Bool
+immuneAgainst x against = damageType against `elem` immunities x
+
+effectivePower :: Group -> Int
+effectivePower g = unitCount g * damage g
+
+parseInput :: String -> Either (P.ParseError Char Void) State
+parseInput input = do
+    immuneGroups <- parse ImmuneSystem 0 (drop 1 immuneLines)
+    infectionGroups <- parse Infection (length immuneGroups) (drop 2 infectionLines)
+    return $ M.fromList $ (\g -> (id g, g)) <$> (immuneGroups ++ infectionGroups)
+  where
+    parse groupType startId ls = sequenceA (uncurry (parseLine groupType) <$> zip [startId..] ls)
     (immuneLines, infectionLines) = break null (lines input)
 
-parseLine :: String -> Either (P.ParseError Char Void) Group
-parseLine = P.parse parser ""
+parseLine :: GroupType -> Int -> String -> Either (P.ParseError Char Void) Group
+parseLine groupType id = P.parse parser ""
   where
     parser = do
         unitCount <- read <$> (number <* string "units")
