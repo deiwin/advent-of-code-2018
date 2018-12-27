@@ -29,19 +29,45 @@ data Group = Group { unitCount :: !Int
                    , initiative :: !Int
                    , groupType :: !GroupType
                    , id :: !Int
-                   } deriving (Show)
+                   } deriving (Show, Eq)
 type State = M.Map Int Group
 
 main :: IO ()
 main = do
     Right state <- parseInput <$> readFile "day24.input"
     print $ sum $ unitCount <$> combat state
+    print $ sum $ unitCount <$> firstWinningCombat state
+
+firstWinningCombat :: State -> State
+firstWinningCombat = binarySearch 0 1000000 f p
+  where
+    f n s = combat $ boost s n
+    p s = not (any ((== Infection) . groupType) $ M.elems s)
+
+binarySearch :: Int -> Int -> (Int -> State -> State) -> (State -> Bool) -> State -> State
+binarySearch min max f p state
+  | min == max = f min state
+  | otherwise = binarySearch newMin newMax f p state
+  where
+    newState = f median state
+    median = min + ((max - min) `quot` 2)
+    (newMin, newMax)
+      | p newState = (min, median)
+      | otherwise = (median + 1, max)
+
+boost :: State -> Int -> State
+boost state additionalDamage = f <$> state
+  where
+    f g | groupType g == ImmuneSystem = g { damage = damage g + additionalDamage}
+        | otherwise = g
 
 combat :: State -> State
 combat state
   | over = state
-  | otherwise = combat $ fight state
+  | newState == state = state
+  | otherwise = combat newState
   where
+    newState = fight state
     over = length (nub $ groupType <$> M.elems state) < 2
 
 fight :: State -> State
