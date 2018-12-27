@@ -1,13 +1,16 @@
 #!/usr/bin/env stack
--- stack --resolver lts-12.20 --install-ghc runghc
+-- stack --resolver lts-12.20 --install-ghc runghc --package sbv
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 
 import Linear.V3 (V3(..))
 import Data.List (maximumBy)
 import Data.Ord (comparing)
 import qualified Text.Parsec as P
 import Text.Parsec ((<|>))
+import Data.SBV (optimize, OptimizeStyle(Lexicographic), maximize, minimize, sInteger, SInteger
+  , literal, SBV, (.<=), oneIf)
 
 type Point = V3 Int
 type Bot = (Point, Int)
@@ -16,6 +19,26 @@ main :: IO ()
 main = do
     Right bots <- parseInput <$> readFile "day23.input"
     print $ inRangeOfStrongest bots
+    result <- bestPointDist bots
+    print result
+
+bestPointDist :: [Bot] -> _
+bestPointDist bots = optimize Lexicographic $ do
+    x <- sInteger "x"
+    y <- sInteger "y"
+    z <- sInteger "z"
+    let p = V3 x y z
+    maximize "inRangeCount" $ countInRange p
+    minimize "distance" $ mDist' p start
+  where
+    start = V3 0 0 0
+    inRangeOf p (p', r) = mDist' p p' .<= toLit r
+    countInRange :: _ -> SInteger
+    countInRange p = sum (oneIf . (p `inRangeOf`) <$> bots)
+    mDist' :: _ -> Point -> SBV Integer
+    mDist' (V3 x y z) (V3 x' y' z') = abs (x - toLit x') + abs (y - toLit y') + abs (z - toLit z')
+    toLit :: Int -> SInteger
+    toLit x = literal $ fromIntegral x
 
 inRangeOfStrongest :: [Bot] -> Int
 inRangeOfStrongest bots = length $ filter (inRangeOf strongestBot) bots
