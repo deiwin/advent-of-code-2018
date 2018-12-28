@@ -7,11 +7,12 @@
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Control.Lens as L
+import qualified Data.Set as S
 import Control.Lens (makeLenses, lens, (&), (^.), (^?), (^?!), (.~), ix, (%~))
 import Text.Show.Functions ()
 import Data.Char (toUpper)
 import Data.Bits ((.&.), (.|.))
-import Data.Either (isRight)
+import Data.Either (isRight, fromRight)
 
 import Debug.Trace (trace)
 
@@ -28,19 +29,27 @@ data Op = Addr | Addi
 data State = State { _instructionRegisterIx :: !Int
                    , _registers :: !(VU.Vector Int)
                    , _instructions :: !(V.Vector Instruction)
-                   } deriving (Show)
+                   } deriving (Show, Ord, Eq)
 $(makeLenses ''State)
 
 main :: IO ()
 main = do
     initialState <- parseInput <$> readFile "day21.input"
-    let Left finalState = whileRight tick (initialState & register 0 .~ 0)
-    print $ finalState ^. registers
+    print $ untilOp28 initialState ^?! register 1
+    print $ untilLoop initialState ^?! register 1
 
-whileRight :: (a -> Either b a) -> a -> Either b a
-whileRight f x | (Right a) <- newX = whileRight f a
-               | otherwise         = newX
-    where newX = f x
+untilLoop :: State -> State
+untilLoop s = untilLoop' S.empty s s
+untilLoop' :: S.Set State -> State -> State -> State
+untilLoop' seenStates lastNonLoopState s
+  | S.member s seenStates = lastNonLoopState
+  | otherwise = untilLoop' (S.insert s seenStates) s (untilOp28 (fromRight undefined (tick s)))
+
+untilOp28 :: State -> State
+untilOp28 s | s ^?! instructionRegister == 28 = s
+            | (Right s') <- newS              = untilOp28 s'
+            | (Left s') <- newS               = s'
+    where newS = tick s
 
 tick :: State -> Either State State
 tick state
@@ -50,7 +59,6 @@ tick state
     instruction = (\i -> state ^? instructions . ix i) $ state ^?! instructionRegister
 
 exec :: State -> Instruction -> State
-exec s i | trace (show (s ^. registers, i)) False = undefined
 exec s i = go i & overInstructionRegister (+ 1)
   where
     go (Addr, (a, b, c)) = s & register c .~ ((s ^?! register a) + (s ^?! register b))
